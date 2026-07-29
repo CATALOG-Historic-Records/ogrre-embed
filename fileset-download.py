@@ -116,7 +116,7 @@ def build_fast_pdf_index(client, project_id, workers):
     return pdf_index
 
 
-def process_and_download_all():
+def process_and_download():
     args = parse_arguments()
     project_id = args.project
 
@@ -204,4 +204,4 @@ def process_and_download_all():
 
 
 if __name__ == "__main__":
-    process_and_download_all()
+    process_and_download()
