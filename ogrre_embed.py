@@ -134,6 +134,11 @@ def make_pdf_searchable(input_pdf, input_json, output_pdf=None, gcs_utils=None):
     else:
         raise ValueError("Invalid input_pdf format. Must be file path, bytes, or fitz.Document.")
 
+    if not pdf_doc.is_pdf:
+        pdf_bytes = pdf_doc.convert_to_pdf()
+        pdf_doc.close()
+        pdf_doc = fitz.open("pdf", pdf_bytes)
+
     # 2. Load JSON Data
     doc_json = None
     if isinstance(input_json, dict):
@@ -163,7 +168,6 @@ def make_pdf_searchable(input_pdf, input_json, output_pdf=None, gcs_utils=None):
 
     for page_num in range(len(pdf_doc)):
         page = pdf_doc[page_num]
-        image_w, image_h = get_embedded_image_dimensions(pdf_doc, page_num)
         pdf_w = page.rect.width
         pdf_h = page.rect.height
 
@@ -173,11 +177,11 @@ def make_pdf_searchable(input_pdf, input_json, output_pdf=None, gcs_utils=None):
         for item in page_items:
             text = item["text"]
 
-            # Map bounding box coordinates to PDF page coordinates
-            x0 = item["x_min_norm"] * image_w
-            x1 = item["x_max_norm"] * image_w
-            y0 = (item["y_min_norm"] * image_h) + (pdf_h - image_h)
-            y1 = (item["y_max_norm"] * image_h) + (pdf_h - image_h)
+            # Map normalized bounding box coordinates (0.0 to 1.0) directly to PDF page dimensions
+            x0 = item["x_min_norm"] * pdf_w
+            x1 = item["x_max_norm"] * pdf_w
+            y0 = item["y_min_norm"] * pdf_h
+            y1 = item["y_max_norm"] * pdf_h
 
             rect = fitz.Rect(x0, y0, x1, y1)
 
