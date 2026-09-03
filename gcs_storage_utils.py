@@ -1,5 +1,5 @@
 from google.cloud import storage
-import os
+import io
 
 class GCSStorageUtils:
     def __init__(self, project_id):
@@ -32,7 +32,7 @@ class GCSStorageUtils:
         blob = bucket.blob(blob_name)
         return blob.download_as_bytes()
 
-    def upload_file_to_gcs(self, gcs_uri, pdf_doc=None, local_file_path=None):
+    def upload_file_to_gcs(self, gcs_uri, pdf_bytes=None, pdf_doc=None, local_file_path=None):
         bucket_name, blob_name = self.parse_gcs_uri(gcs_uri)
         bucket = self.storage_client.bucket(bucket_name)
         if not bucket.exists():
@@ -52,9 +52,17 @@ class GCSStorageUtils:
                 raise creation_error
 
         blob = bucket.blob(blob_name)
-        if pdf_doc:
+        if pdf_bytes:
+            if isinstance(pdf_bytes, io.BytesIO):
+                output_bytes = pdf_bytes.getvalue()
+            else:
+                output_bytes = pdf_bytes
+            blob.upload_from_string(output_bytes, content_type="application/pdf")
+        elif pdf_doc:
             output_bytes = pdf_doc.tobytes()
             blob.upload_from_string(output_bytes, content_type="application/pdf")
         elif local_file_path:
             with open(local_file_path, "rb") as f:
                 blob.upload_from_file(f, content_type="application/pdf")
+        else:
+            raise ValueError("Must provide pdf_bytes, pdf_doc, or local_file_path to upload.")

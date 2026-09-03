@@ -5,8 +5,11 @@ import time
 import argparse
 import os
 import sys
+import io
 from gcs_storage_utils import GCSStorageUtils
 from tqdm import tqdm
+from pypdf import PdfReader, PdfWriter
+from pypdf.generic import Fit
 
 
 class OGRREEmbed:
@@ -114,34 +117,44 @@ class OGRREEmbed:
 
         return page.rect.width, page.rect.height
 
-    def extract_searchable_entities(self, entities_list):
+    def extract_searchable_entities(self, entities_list, parent_key=None):
         """
-        Extracts schema keys, values, and bounding boxes for invisible text overlay.
+        Recursively extracts leaf schema keys, values, and bounding boxes
+        for the search overlay while bypassing parent container elements.
         """
         for entity in entities_list:
-            schema_key = entity.get("type")           # e.g., 'invoice_number'
-            value_text = entity.get("mentionText")    # e.g., 'INV-10492'
+            schema_key = entity.get("type")
+            value_text = entity.get("mentionText", "").strip()
 
-            # Combine key and value into a queryable string
-            # Formats like "key: value" or "key=value" work exceptionally well for text search engines
-            searchable_text = f"{schema_key}: {value_text}"
+            # Build namespace: 'parent_type.child_type' (optional, omit parent_key if unwanted)
+            full_key = f"{parent_key}.{schema_key}" if parent_key else schema_key
 
-            # Extract page anchor and bounding box coordinates
+            # 1. Early Return: If entity is a container, delegate to properties & skip parent
+            sub_properties = entity.get("properties")
+            if sub_properties:
+                self.extract_searchable_entities(sub_properties, parent_key=full_key)
+                continue
+
+            # 2. Extract Geometry for Leaf Nodes
             page_anchor = entity.get("pageAnchor", {})
             page_refs = page_anchor.get("pageRefs", [])
 
             if page_refs:
-                page_num = int(page_refs[0].get("page", 0))
-                poly = page_refs[0].get("boundingPoly", {})
+                ref = page_refs[0]
+                page_num = int(ref.get("page", 0))
+                poly = ref.get("boundingPoly", {})
                 vertices = poly.get("normalizedVertices", [])
 
-                self.searchable_layers.append({
-                    "page": page_num,
-                    "key": schema_key,
-                    "value": value_text,
-                    "search_string": searchable_text,
-                    "normalized_vertices": vertices
-                })
+                # Safely append only if we have non-empty text and valid vertices
+                if value_text and vertices:
+                    searchable_text = f"{full_key}: {value_text}"
+                    self.searchable_layers.append({
+                        "page": page_num,
+                        "key": full_key,
+                        "value": value_text,
+                        "search_string": searchable_text,
+                        "normalized_vertices": vertices
+                    })
 
     def extract_searchable_attributes(self, attributeList):
         """
@@ -224,6 +237,120 @@ class OGRREEmbed:
             pass
         return 1.0
 
+    def add_entity_outlines(self, writer, entities, layout_map=None, parent_outline=None):
+        """
+        Recursively builds PDF bookmarks (outlines) using entity types and positions.
+        """
+        for entity in entities:
+            schema_key = entity.get("type", "Entity")
+            value_text = entity.get("mentionText", "").strip()
+
+            # Format bookmark label (e.g., "Facility Name: Carbon Limestone")
+            if value_text:
+                # Truncate long values for clean sidebar display
+                display_value = (value_text[:30] + '...') if len(value_text) > 30 else value_text
+                title = f"{schema_key}: {display_value}"
+            else:
+                title = schema_key
+
+            # Resolve page and coordinates for jump target
+            page_anchor = entity.get("pageAnchor", {})
+            page_refs = page_anchor.get("pageRefs", [])
+
+            current_outline = None
+            if page_refs:
+                page_num = int(page_refs[0].get("page", 0))
+
+                # Ensure page index is valid in the writer
+                if page_num < len(writer.pages):
+                    page_ref = writer.pages[page_num]
+                    page_h = float(page_ref.mediabox.height)
+
+                    # Extract top-left Y coordinate to position viewer jump location
+                    poly = page_refs[0].get("boundingPoly", {})
+                    vertices = poly.get("normalizedVertices", [])
+
+                    if vertices:
+                        top_y = page_h - (vertices[0].get("y", 0.0) * page_h)
+                        top_y = max(0, top_y + 20.0)
+                    else:
+                        top_y = page_h  # Default to top of page if no vertices
+
+                    # Create outline item pointing to page and top offset
+                    current_outline = writer.add_outline_item(
+                        title=title,
+                        page_number=page_num,
+                        parent=parent_outline,
+                        fit=Fit.fit_horizontally(top=top_y)
+                    )
+
+            # If entity has no location but has children, fallback parent outline container
+            if not current_outline and parent_outline:
+                current_outline = parent_outline
+
+            # Recurse through child properties to build sub-level bookmarks
+            sub_properties = entity.get("properties", [])
+            if sub_properties:
+                self.add_entity_outlines(
+                    writer=writer,
+                    entities=sub_properties,
+                    layout_map=layout_map,
+                    parent_outline=current_outline
+                )
+
+    def add_attribute_outlines(self, writer, attributes, parent_outline=None):
+        """
+        Recursively builds PDF bookmarks (outlines) for MongoDB / attributesList schemas.
+        """
+        for attr in attributes:
+            schema_key = attr.get("key", "Attribute")
+            value_text = str(attr.get("value", "")).strip()
+
+            if value_text:
+                display_value = (value_text[:30] + '...') if len(value_text) > 30 else value_text
+                title = f"{schema_key}: {display_value}"
+            else:
+                title = schema_key
+
+            current_outline = None
+            try:
+                page_num = int(attr.get("page", 0))
+            except (ValueError, TypeError):
+                page_num = 0
+
+            if page_num < len(writer.pages):
+                page_ref = writer.pages[page_num]
+                page_h = float(page_ref.mediabox.height)
+
+                # Extract Y-coordinate if available in normalized_vertices
+                vertices = attr.get("normalized_vertices", [])
+                if vertices:
+                    # Check if vertices are dicts or lists
+                    top_y_norm = vertices[0].get("y", 0.0) if isinstance(vertices[0], dict) else vertices[0][1]
+                    top_y = page_h - (top_y_norm * page_h)
+                    top_y = max(0, top_y + 20.0)
+                else:
+                    top_y = page_h
+
+                current_outline = writer.add_outline_item(
+                    title=title,
+                    page_number=page_num,
+                    parent=parent_outline,
+                    fit=Fit.fit_horizontally(top=top_y)
+                )
+
+            if not current_outline and parent_outline:
+                current_outline = parent_outline
+
+            # Recurse into nested subattributes
+            sub_attributes = attr.get("subattributes", [])
+            if sub_attributes:
+                self.add_attribute_outlines(
+                    writer=writer,
+                    attributes=sub_attributes,
+                    parent_outline=current_outline
+                )
+
     def make_pdf_searchable(self, input_pdf, input_json, output_pdf=None, gcs_utils=None):
         """Overlays invisible text on a scanned PDF using dynamic DocAI canvas scaling.
 
@@ -278,15 +405,18 @@ class OGRREEmbed:
 
         if doc_json.get("entities"):
             entities_list = doc_json.get("entities", [])
+            attributes_list = []
             self.extract_searchable_entities(entities_list)
             self.json_type = "DocAI"
 
         elif doc_json.get("attributesList"):
             attributes_list = doc_json.get("attributesList", [])
+            entities_list = []
             self.extract_searchable_attributes(attributes_list)
 
         else:
             print(f"No entities or attributesList found in JSON.")
+            sys.exit()
 
         # Process each page using the collected entity/attribute layers
         for page_num in range(len(pdf_doc)):
@@ -354,21 +484,40 @@ class OGRREEmbed:
                     overlay=True,
                 )
 
+        # Export PyMuPDF modified document to in-memory bytes buffer
+        searchable_pdf_bytes = pdf_doc.tobytes()
+        pdf_doc.close()
+
+        # Attach bookmark outlines with pypdf
+        reader = PdfReader(io.BytesIO(searchable_pdf_bytes))
+        writer = PdfWriter()
+
+        for page in reader.pages:
+            writer.add_page(page)
+
+        # Route outline construction based on JSON structure (DocAI vs MongoDB/attributesList)
+        if self.json_type == "DocAI" and entities_list:
+            self.add_entity_outlines(writer, doc_json.get("entities", []))
+        elif self.json_type == "MongoDB" and attributes_list:
+            self.add_attribute_outlines(writer, doc_json.get("attributesList", []))
+
         if output_pdf:
             output_pdf_str = str(output_pdf)
             if output_pdf_str.startswith("gs://"):
                 if not gcs_utils:
-                    from gcs_storage_utils import GCSStorageUtils
-                    gcs_utils = GCSStorageUtils()
-                gcs_utils.upload_file_to_gcs(output_pdf_str, pdf_doc=pdf_doc)
+                    gcs_utils = GCSStorageUtils(self.project_id)
+                out_buffer = io.BytesIO()
+                writer.write(out_buffer)
+                out_buffer.seek(0)
+                gcs_utils.upload_file_to_gcs(output_pdf_str, pdf_bytes=out_buffer.getvalue())
             else:
-                pdf_doc.save(output_pdf_str)
-            pdf_doc.close()
+                with open(output_pdf_str, "wb") as f:
+                    writer.write(f)
             return output_pdf_str
         else:
-            result_bytes = pdf_doc.tobytes()
-            pdf_doc.close()
-            return result_bytes
+            out_buffer = io.BytesIO()
+            writer.write(out_buffer)
+            return out_buffer.getvalue()
 
 
 
