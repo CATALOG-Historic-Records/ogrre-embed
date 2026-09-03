@@ -540,6 +540,20 @@ class OGRREEmbed:
         print(f"PDF embedding completed in {end_time - start_time:.2f} seconds.")
 
 
+def make_pdf_searchable(input_pdf, input_json, output_pdf=None, gcs_utils=None):
+    """Top-level helper function to generate searchable PDF bytes or save to output file.
+
+    Instantiates an OGRREEmbed handler and calls its make_pdf_searchable method.
+    """
+    embedder = OGRREEmbed(output_dir=".")
+    return embedder.make_pdf_searchable(
+        input_pdf=input_pdf,
+        input_json=input_json,
+        output_pdf=output_pdf,
+        gcs_utils=gcs_utils,
+    )
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Embed PDFs with invisible searchable text.")
     parser.add_argument("-i", "--input", default=None, help="Input GCS or local directory if containing both PDF and JSON files.")
