@@ -1,13 +1,34 @@
-/Debug/
-/JSON_files/
-/output/20250721103548182_PADEP_Form26R_1_searchable.pdf
-/output/20250721144027138_PADEP_Form26R_3_searchable.pdf
-/output/20250721144027138_PADEP_Form26R_5_searchable.pdf
-/output/20250721144027138_PADEP_Form26R_7_searchable.pdf
-/output/20250722100004881_PADEP_Form26R_4_searchable.pdf
-/PDF_files/
-/indexing-benchmark.py
-/inspect_geometry.py
-/inspect_json.py
-/pdf_info.py
-/temp.py
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Packaging/build artifacts
+*.egg-info/
+*.egg
+build/
+dist/
+
+# Local environments and secrets
+.env
+.env.*
+.venv/
+venv/
+env/
+*.pem
+*.key
+*credentials*.json
+*service-account*.json
+
+# Local tool output
+output/
+
+# OS/editor noise
+.DS_Store
+.idea/
+.vscode/

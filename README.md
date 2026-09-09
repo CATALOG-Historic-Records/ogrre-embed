@@ -20,25 +20,17 @@ It handles scaling mismatches between raw pixel resolutions, normalized bounding
 ## Requirements
 
 - **Python:** 3.8+
-- **Dependencies:** Install requirements via `requirements.txt`:
+- **Key Dependencies:**
+  - `PyMuPDF` (`fitz`)
+  - `google-cloud-storage`
+  - `google-auth`
+  - `pypdf`
+  - `tqdm`
+
+Install dependencies via `pip`:
 ```bash
 pip install -r requirements.txt
 ```
-
-### `requirements.txt`
-```text
-# PDF Processing & Rendering
-pymupdf>=1.23.0
-pypdf>=4.0.0
-
-# Google Cloud Storage & Authentication
-google-cloud-storage>=2.10.0
-google-auth>=2.20.0
-
-# Terminal UI & Progress Monitoring
-tqdm>=4.65.0
-```
-
 ---
 
 ## Project Structure
