@@ -233,7 +233,7 @@ class OGRREEmbed:
             key_type, val_str = doc.xref_get_key(page.xref, "UserUnit")
             if key_type in ("int", "real"):
                 return float(val_str)
-        except Exception(BaseException):
+        except Exception:
             pass
         return 1.0
 
@@ -554,7 +554,7 @@ def make_pdf_searchable(input_pdf, input_json, output_pdf=None, gcs_utils=None):
     )
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description="Embed PDFs with invisible searchable text.")
     parser.add_argument("-i", "--input", default=None, help="Input GCS or local directory if containing both PDF and JSON files.")
     parser.add_argument("-p", "--pdf", default=None, help="Input GCS or local PDF file directory.")
@@ -589,6 +589,11 @@ if __name__ == "__main__":
            (args.json and args.json.startswith("gs://"))
         ):
             print("Error: A Google Cloud Project ID is required when using GCS buckets or output directories.")
+            sys.exit(1)
 
     embed = OGRREEmbed(args.output, args.input, args.pdf, args.json, args.project)
     embed.embed_pdfs()
+
+
+if __name__ == "__main__":
+    main()
