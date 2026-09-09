@@ -1,18 +1,19 @@
 # OGRRE-Embed
 
-`ogrre-embed` is a Python utility for aligning Google Document AI OCR outputs with scanned PDF pages and embedding precise, invisible searchable text layers directly into the PDF.
+`ogrre-embed` is a Python utility for aligning OCR/schema outputs with scanned PDF pages, embedding precise invisible searchable text layers, and injecting interactive PDF bookmark outline trees directly into documents.
 
-It handles scaling mismatches between raw pixel resolutions, normalized Document AI bounding boxes, and PDF page coordinates to ensure 1:1 searchable text alignment. It natively supports both local file processing and Google Cloud Storage (GCS) buckets, including automatic bucket creation, horizontal text scaling, and automated dataset pairing.
+It handles scaling mismatches between raw pixel resolutions, normalized bounding box spaces, and PDF page coordinates to ensure 1:1 searchable text alignment. It natively supports both Google Document AI schema structures (`entities`) and MongoDB/legacy schema formats (`attributesList`), as well as local file processing and Google Cloud Storage (GCS) buckets without temporary disk overhead.
 
 ---
 
 ## Key Features
 
-- **Exact Bounding Box & Horizontal Scaling:** Maps Document AI `normalizedVertices` against PDF geometry and applies horizontal matrix transformations (`morph`) so character selection matches underlying scanned text exactly.
-- **Dual Local & GCS Pipelines:** Reads and writes seamless text overlays locally or directly to/from GCS buckets in memory without temporary disk overhead.
+- **Exact Bounding Box & Horizontal Scaling:** Maps normalized bounding vertices against PDF geometry and applies horizontal matrix transformations (`morph`) so invisible searchable text matches underlying scanned characters precisely.
+- **Dual Schema Support:** Automatically handles both Document AI (`entities` with recursive properties) and MongoDB/legacy (`attributesList` with recursive subattributes) schema structures.
+- **Interactive Bookmark Outlines:** Recursively constructs hierarchical navigation trees (bookmarks/outlines) using `pypdf`, embedding jump targets aligned to top-left entity coordinates with vertical padding buffers.
+- **Dual Local & GCS Pipelines:** Reads and writes seamless text overlays and outline layers locally or directly to/from GCS buckets in memory via byte streams (`io.BytesIO`).
 - **Automated Bucket Management:** Automatically detects missing destination GCS buckets and creates them on demand.
-- **Dataset Downloader & Indexer:** Includes a fast, multi-threaded downloader (`fileset-download.py`) to index PDFs across GCP project buckets and pair them with Document AI JSON output outputs.
-- **Flexible File Inputs:** Accepts combined input folders, split PDF/JSON directories, or `gs://` bucket URIs.
+- **Dataset Downloader & Indexer:** Includes a fast, multi-threaded downloader (`fileset-download.py`) to index PDFs across GCP project buckets and pair them with Document AI JSON outputs.
 
 ---
 
@@ -35,12 +36,13 @@ pip install -r requirements.txt
 ## Project Structure
 ```markdown
 ogrre-embed/
-├── ogrre_embed.py          # Main CLI and embedding pipeline engine
-├── gcs_storage_utils.py    # GCS helper utilities (listing, downloads, bucket creation)
+├── ogrre_embed.py          # Main CLI, text overlay, and outline tree generation engine
+├── gcs_storage_utils.py    # GCS helper utilities (listing, downloads, byte/file uploads)
 ├── fileset-download.py     # Parallel indexer & downloader for paired GCS datasets
-├── requirements.txt        # Installs the package and runtime dependencies from setup.cfg
+├── requirements.txt        # Package dependencies
 └── README.md
 ```
+
 ---
 
 ## Google Cloud Authentication
@@ -55,35 +57,36 @@ gcloud auth application-default login
 # Option B: Set Service Account Credentials
 ```bash
 set GOOGLE_APPLICATION_CREDENTIALS="C:\path\to\your\key.json"
-````
+```
+
 ---
 
 ## Usage
 
-### 1. Embedding Invisible Searchable Text (`ogrre_embed.py`)
+### 1. Embedding Searchable Text & Outline Trees (`ogrre_embed.py`)
 
-`ogrre_embed.py` processes pairs of PDF and JSON files, overlays the searchable text layer, and outputs the result locally or to a GCS bucket.
+`ogrre_embed.py` processes pairs of PDF and JSON files, overlays the invisible text layer, builds the PDF bookmark tree, and outputs the result locally or to a GCS bucket.
 
 #### Option A: Local Directory (Combined Input)
 
 ```bash
-ogrre-embed -i ./input -o ./output
+python ogrre_embed.py -i ./input -o ./output
 ```
 
 #### Option B: Local Directory (Separate PDF and JSON Folders)
 
 ```bash
-ogrre-embed -p ./data/pdfs -j ./data/jsons -o ./output
+python ogrre_embed.py -p ./data/pdfs -j ./data/jsons -o ./output
 ```
 
 #### Option C: Google Cloud Storage Buckets
 When using GCS URIs, pass your GCP Project ID via `--project`:
 
 ```bash
-ogrre-embed -i gs://my-input-bucket/input -o gs://my-output-bucket/output --project my-gcp-project-id
+python ogrre_embed.py -i gs://my-input-bucket/input -o gs://my-output-bucket/output --project my-gcp-project-id
 ```
 
-#### CLI Arguments for `ogrre-embed`:
+#### CLI Arguments for `ogrre_embed.py`:
 | Argument | Short | Description |
 | :--- | :--- | :--- |
 | `--input` | `-i` | Combined directory or GCS URI containing both PDF and JSON files. |
@@ -116,28 +119,33 @@ python fileset-download.py --project my-gcp-project-id --json-bucket test-padep2
 
 ## Python Module Usage
 
-You can also import and use `OGRREEmbed` directly inside custom Python scripts:
+You can import and use `OGRREEmbed` or `make_pdf_searchable` directly inside custom Python pipelines:
 
 ```python
-from ogrre_embed import OGRREEmbed
+from ogrre_embed import OGRREEmbed, make_pdf_searchable
 
-# Initialize for GCS processing
+# 1. High-level helper function returning PDF bytes or output file
+pdf_bytes = make_pdf_searchable(
+    input_pdf="path/to/document.pdf",
+    input_json="path/to/extraction.json"
+)
+
+# 2. Direct OGRREEmbed batch processing
 embedder = OGRREEmbed(
     output_dir="gs://my-output-bucket/searchable",
     input_dir="gs://my-input-bucket/raw",
     project_id="my-gcp-project-id"
 )
-
-# Run embedding pipeline
 embedder.embed_pdfs()
 ```
+
 ---
 
-## How Alignment Works
+## How Processing Works
 
-1. **Geometry Mapping:** Normalized bounding box coordinates (`0.0` to `1.0`) are multiplied against page background image dimensions (`image_w`, `image_h`) and scaled to PyMuPDF point coordinates.
-2. **Horizontal Glyph Fitting:** Unscaled text length in standard Helvetica is compared against the target bounding box width. A transformation matrix (`fitz.Matrix(horizontal_scale, 1)`) is applied via `morph` to stretch or compress glyph spacing to span the exact bounding box width.
-3. **Invisible Text Layer:** Words are placed using `render_mode=3` (invisible text) with `set_simple=True` to guarantee PDF searchability and text selection in PDF readers.
+1. **Geometry Mapping:** Normalized bounding box coordinates (`0.0` to `1.0`) are mapped against page background image dimensions (`image_w`, `image_h`) and user scale units to convert accurately into PDF point space.
+2. **Invisible Text Injection:** PyMuPDF (`fitz`) places text strings (`key: value`) using `render_mode=3` (invisible text) with horizontal matrix transformation (`morph`) so character boundaries line up with physical document graphics.
+3. **Outline Tree Assembly:** PyMuPDF exports the rendered canvas as an in-memory byte stream to `pypdf`. `pypdf` reads the stream, constructs the hierarchical outline/bookmark tree based on schema nestings, applies jump targets with Y-offset padding, and writes out the final PDF.
 
 ---
 
