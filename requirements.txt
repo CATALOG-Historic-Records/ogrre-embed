@@ -1,0 +1,10 @@
+# PDF Processing & Rendering
+pymupdf>=1.23.0
+pypdf>=4.0.0
+
+# Google Cloud Storage & Authentication
+google-cloud-storage>=2.10.0
+google-auth>=2.20.0
+
+# Terminal UI & Progress Monitoring
+tqdm>=4.65.0
