@@ -1,3 +1,34 @@
-*.egg-info
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Packaging/build artifacts
+*.egg-info/
+*.egg
 build/
-__pycache__
+dist/
+
+# Local environments and secrets
+.env
+.env.*
+.venv/
+venv/
+env/
+*.pem
+*.key
+*credentials*.json
+*service-account*.json
+
+# Local tool output
+output/
+
+# OS/editor noise
+.DS_Store
+.idea/
+.vscode/

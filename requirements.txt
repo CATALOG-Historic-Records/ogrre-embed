@@ -1,0 +1,3 @@
+# Runtime dependencies are declared in setup.cfg so package installs and
+# requirements installs cannot drift apart.
+-e .

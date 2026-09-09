@@ -22,20 +22,23 @@ It handles scaling mismatches between raw pixel resolutions, normalized Document
 - **Key Dependencies:**
   - `PyMuPDF` (`fitz`)
   - `google-cloud-storage`
+  - `google-auth`
+  - `pypdf`
   - `tqdm`
 
 Install dependencies via `pip`:
 ```bash
-pip install PyMuPDF google-cloud-storage tqdm
+pip install -r requirements.txt
 ```
 ---
 
 ## Project Structure
 ```markdown
 ogrre-embed/
-├── ogrre-embed.py          # Main CLI and embedding pipeline engine
+├── ogrre_embed.py          # Main CLI and embedding pipeline engine
 ├── gcs_storage_utils.py    # GCS helper utilities (listing, downloads, bucket creation)
 ├── fileset-download.py     # Parallel indexer & downloader for paired GCS datasets
+├── requirements.txt        # Installs the package and runtime dependencies from setup.cfg
 └── README.md
 ```
 ---
@@ -57,30 +60,30 @@ set GOOGLE_APPLICATION_CREDENTIALS="C:\path\to\your\key.json"
 
 ## Usage
 
-### 1. Embedding Invisible Searchable Text (`ogrre-embed.py`)
+### 1. Embedding Invisible Searchable Text (`ogrre_embed.py`)
 
-`ogrre-embed.py` processes pairs of PDF and JSON files, overlays the searchable text layer, and outputs the result locally or to a GCS bucket.
+`ogrre_embed.py` processes pairs of PDF and JSON files, overlays the searchable text layer, and outputs the result locally or to a GCS bucket.
 
 #### Option A: Local Directory (Combined Input)
 
 ```bash
-python ogrre-embed.py -i ./input -o ./output
+ogrre-embed -i ./input -o ./output
 ```
 
 #### Option B: Local Directory (Separate PDF and JSON Folders)
 
 ```bash
-python ogrre-embed.py -p ./data/pdfs -j ./data/jsons -o ./output
+ogrre-embed -p ./data/pdfs -j ./data/jsons -o ./output
 ```
 
 #### Option C: Google Cloud Storage Buckets
 When using GCS URIs, pass your GCP Project ID via `--project`:
 
 ```bash
-python ogrre-embed.py -i gs://my-input-bucket/input -o gs://my-output-bucket/output --project my-gcp-project-id
+ogrre-embed -i gs://my-input-bucket/input -o gs://my-output-bucket/output --project my-gcp-project-id
 ```
 
-#### CLI Arguments for `ogrre-embed.py`:
+#### CLI Arguments for `ogrre-embed`:
 | Argument | Short | Description |
 | :--- | :--- | :--- |
 | `--input` | `-i` | Combined directory or GCS URI containing both PDF and JSON files. |
