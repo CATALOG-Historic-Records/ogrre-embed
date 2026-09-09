@@ -233,7 +233,7 @@ class OGRREEmbed:
             key_type, val_str = doc.xref_get_key(page.xref, "UserUnit")
             if key_type in ("int", "real"):
                 return float(val_str)
-        except Exception:
+        except Exception(BaseException):
             pass
         return 1.0
 
